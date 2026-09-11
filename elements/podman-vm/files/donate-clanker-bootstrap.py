@@ -19,6 +19,12 @@ only then from a mounted `contributor.env`. The names it reads are
 `GOOSE_PROVIDER`, `GOOSE_MODEL` and `GITHUB_COPILOT_TOKEN`. Exporting anything
 else leaves the worker with no credentials at all.
 
+The optional `identity.v1` envelope field carries a contributor's GitHub
+personal-access token. When present, it is mapped to `GH_TOKEN` so the worker
+can fork, push, and open pull requests. The versioned field name lets the
+host and guest evolve independently: a future `identity.v2` can change the
+schema without breaking guests that only understand v1.
+
 Progress is written to stderr for the journal, and mirrored to /dev/kmsg so it
 reaches the serial console. That mirror is not decoration: this guest has no
 SSH and no guest agent, and a unit's `console` output stream stops reaching the
@@ -118,6 +124,8 @@ def worker_environment(envelope):
         env["GOOSE_MODEL"] = envelope["goose_model"]
     if envelope.get("provider_secret"):
         env["GITHUB_COPILOT_TOKEN"] = envelope["provider_secret"]
+    if envelope.get("identity.v1"):
+        env["GH_TOKEN"] = envelope["identity.v1"]
     return env
 
 
