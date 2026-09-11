@@ -37,9 +37,9 @@ description: |
     2. TODO — `bst source track volcano/volcano.bst` to fill every `ref:`
        from go.sum (the plugin's track() reads the staged git_repo's
        go.sum; refs come out in git-describe form). As of this commit
-       all 232 go_module sources still carry the placeholder comment
-       `# ref: {...} filled by 'bst source track'` and NO real `ref:`,
-       so the element cannot build yet. Two entries need
+       all 235 go_module sources still lack a real `ref:`: 233 carry
+       the placeholder comment `# ref: {...} filled by 'bst source
+       track'`, so the element cannot build yet. Two entries need
        hand-filled refs -- see their comments (cyphar.com/go-pathrs:
        plugin track crashes on its 4-field go-import meta;
        stathat.com/c/consistent: vanity domain defunct). Tracking needs
