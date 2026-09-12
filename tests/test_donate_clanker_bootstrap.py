@@ -119,6 +119,18 @@ class ValidateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "invalid bootstrap endpoint"):
                     bootstrap.validate(valid_envelope(hive_endpoint=endpoint))
 
+    def test_accepts_identity_v1_as_a_string(self):
+        bootstrap.validate(valid_envelope(**{"identity.v1": "ghp_contributor_token"}))
+
+    def test_accepts_an_absent_identity_v1(self):
+        bootstrap.validate(valid_envelope())
+
+    def test_rejects_a_non_string_identity_v1(self):
+        for identity in (123, {"token": "ghp_contributor_token"}, ["ghp_contributor_token"]):
+            with self.subTest(identity=identity):
+                with self.assertRaisesRegex(ValueError, "identity.v1 must be a string"):
+                    bootstrap.validate(valid_envelope(**{"identity.v1": identity}))
+
 
 class WorkerEnvironmentTests(unittest.TestCase):
     """The worker reads these names and no others: a typo means no credentials."""
