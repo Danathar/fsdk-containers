@@ -23,40 +23,48 @@ import re
 import subprocess
 import sys
 
+import yaml
+
+# Matches the arch name out of a BuildStream (?) condition key, e.g.
+# `arch == "x86_64"` or `arch == 'riscv64'`. Any quoted identifier is
+# accepted -- the set of arches BuildStream supports is not this script's
+# business to enumerate.
+_ARCH_CONDITION = re.compile(r'arch\s*==\s*["\']([\w-]+)["\']')
+
 
 def extract_arch_refs(content: str) -> dict[str, str]:
-    """Extract architecture-specific refs from conditional sources.
+    """Extract architecture-specific source refs from a .bst file's YAML.
 
-    Matches BuildStream (?) blocks with arch == "<arch>" and ref: <digest>.
-    Returns a dict mapping arch name ('x86_64', 'aarch64') to its ref string.
+    Walks each entry under `sources:` for a BuildStream `(?)` conditional
+    block keyed on `arch ==`, and returns the `ref:` each arch resolves to
+    -- whatever form it takes (a bare digest, or a `git_repo` describe-form
+    string like `v1.0.0-0-gabc123...`). Returns a dict mapping arch name to
+    its ref string.
     """
+    try:
+        doc = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+
     arch_refs: dict[str, str] = {}
-    current_arch: str | None = None
-    in_conditional = False
-
-    for line in content.splitlines():
-        if "(?):" in line:
-            in_conditional = True
-            current_arch = None
+    for source in doc.get("sources") or []:
+        if not isinstance(source, dict):
             continue
-
-        if in_conditional:
-            arch_match = re.search(r'arch\s*==\s*["\'](x86_64|aarch64)["\']', line)
-            if arch_match:
-                current_arch = arch_match.group(1)
+        conditional = source.get("(?)")
+        if not isinstance(conditional, list):
+            continue
+        for entry in conditional:
+            if not isinstance(entry, dict):
                 continue
-
-            # Top-level key out of conditional block
-            if re.match(r"^[a-z_-]+:", line):
-                in_conditional = False
-                current_arch = None
-                continue
-
-            if current_arch:
-                ref_match = re.search(r"^\s*ref:\s*([0-9a-fA-F]{40,64})\b", line)
-                if ref_match:
-                    arch_refs[current_arch] = ref_match.group(1)
-                    current_arch = None
+            for condition, body in entry.items():
+                arch_match = _ARCH_CONDITION.search(str(condition))
+                if not arch_match or not isinstance(body, dict):
+                    continue
+                ref = body.get("ref")
+                if ref is not None:
+                    arch_refs[arch_match.group(1)] = str(ref)
 
     return arch_refs
 
@@ -73,17 +81,19 @@ def check_parity(
     base_refs = extract_arch_refs(base_content)
     head_refs = extract_arch_refs(head_content)
 
-    # Enforce parity on any element defining both x86_64 and aarch64 conditional refs.
-    if "x86_64" in base_refs and "aarch64" in base_refs:
-        x86_changed = base_refs.get("x86_64") != head_refs.get("x86_64")
-        arm_changed = base_refs.get("aarch64") != head_refs.get("aarch64")
+    # Enforce parity across every arch the element conditions a ref on, not
+    # just x86_64/aarch64 -- an element with a ppc64le or riscv64 ref is just
+    # as vulnerable to one arch getting left behind.
+    if len(base_refs) < 2:
+        return None
 
-        if x86_changed != arm_changed:
-            return (
-                f"{file_path}: asymmetric multi-arch ref update "
-                f"(x86_64 changed={x86_changed}, aarch64 changed={arm_changed}). "
-                f"Both architecture refs must be updated together."
-            )
+    changed = {arch: base_refs[arch] != head_refs.get(arch) for arch in base_refs}
+    if len(set(changed.values())) > 1:
+        detail = ", ".join(f"{arch} changed={v}" for arch, v in sorted(changed.items()))
+        return (
+            f"{file_path}: asymmetric multi-arch ref update ({detail}). "
+            f"All architecture refs must be updated together."
+        )
 
     return None
 
