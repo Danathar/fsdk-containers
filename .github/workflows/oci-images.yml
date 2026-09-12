@@ -405,6 +405,14 @@ jobs:
           else
             podman run --rm --platform "linux/${PLATFORM_ARCH}" "${REPO}@${arch_digest}" /usr/bin/true
           fi
+          # Shell-enabled images (lab-runner) additionally run shell_probe
+          # through the image's own default entrypoint -- SMOKE_OPTS/ARGS
+          # above override the entrypoint (e.g. to /usr/bin/argo), so without
+          # this the default entrypoint would never be exercised at all.
+          # Mirrors the Justfile's `verify` recipe exactly (see #324).
+          if [ "$IMG_KIND" = "shell-enabled" ] && [ -n "$SHELL_PROBE" ]; then
+            podman run --rm --platform "linux/${PLATFORM_ARCH}" "${REPO}@${arch_digest}" -c "$SHELL_PROBE"
+          fi
 
       - name: Verify published manifest signature
         run: |
